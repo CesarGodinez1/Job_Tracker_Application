@@ -4,7 +4,7 @@ import React from "react";
 interface JobStatusCardProps {
   title: string;
   count: number;
-  color: "blue" | "green" | "red";
+  color: "blue" | "green" | "red" | "purple";
 }
 
 export default function JobStatusCard({ title, count, color }: JobStatusCardProps) {
@@ -12,6 +12,7 @@ export default function JobStatusCard({ title, count, color }: JobStatusCardProp
     blue: "bg-blue-100 text-blue-700",
     green: "bg-green-100 text-green-700",
     red: "bg-red-100 text-red-700",
+    purple: "bg-purple-100 text-purple-700",
   };
 
   return (

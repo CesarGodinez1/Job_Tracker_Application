@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface StatsChartProps {
@@ -9,7 +10,7 @@ interface StatsChartProps {
     applied: number;
     interview: number;
     declined: number;
-    Offers: number;
+    offers: number;
   };
 }
 
@@ -18,7 +19,7 @@ export default function StatsChart({ jobs }: StatsChartProps) {
     { name: "Applied", value: jobs.applied },
     { name: "Interview", value: jobs.interview },
     { name: "Declined", value: jobs.declined },
-    { name: "Offers", value: jobs.Offers },
+    { name: "Offers", value: jobs.offers },
   ];
 
   return (
