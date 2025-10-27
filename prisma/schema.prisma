@@ -1,7 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-
-  output = "../src/generated/prisma"
 }
 
 datasource db {
@@ -40,7 +38,9 @@ model User {
 
   applications Application[]
   contacts     Contact[]
-  createdAt    DateTime      @default(now())
+  emailEvents  EmailEvent[]
+
+  createdAt DateTime @default(now())
 }
 
 model Account {
@@ -56,6 +56,8 @@ model Account {
   scope             String?
   id_token          String? @db.Text
   session_state     String?
+
+  refresh_token_expires_in Int?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -154,4 +156,20 @@ model Contact {
   email     String?
   phone     String?
   notes     String?
+}
+
+model EmailEvent {
+  id               String             @id @default(cuid())
+  userId           String
+  gmailId          String             @unique
+  subject          String?
+  snippet          String?
+  detectedStatus   ApplicationStatus?
+  detectedCompany  String?
+  detectedPosition String?
+  processedAt      DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
