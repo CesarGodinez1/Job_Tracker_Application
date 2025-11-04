@@ -14,6 +14,16 @@ export default function HomePage() {
     declined: 1,
     offers: 1,
   });
+
+  <StatsChart
+  jobs={{
+    applied: 10,
+    interview: 5,
+    declined: 2,
+    offers: 1,
+  }}
+  chartType="bar"
+/>
   const [notifications] = useState<string[]>([
     "Interview scheduled with Google on Oct 18",
     "Application declined by Mircosoft",
@@ -58,13 +68,19 @@ export default function HomePage() {
         <NotificationPanel notifications={recentNotifications} clickable />
       </section>
 
-      {/* Statistics Preview */}
+     {/* Statistics Preview */}
       <section>
-        <h2 className="text-xl font-semibold text-gray-800 mb-3">Application Statistics</h2>
-        <StatsChart jobs={jobs} />
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">Statistics Overview</h2>
+          <Link
+            href="/statistics"
+            className="text-blue-600 hover:underline text-sm"
+          >
+            View All Statistics →
+          </Link>
+        </div>
+        <StatsChart jobs= {jobs} />
       </section>
     </main>
   );
-  
-
 }

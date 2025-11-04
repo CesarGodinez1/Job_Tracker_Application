@@ -1,75 +1,38 @@
 "use client";
 
-import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import React, { useState } from "react";
+import StatsChart from "@/components/StatsChart";
 
-interface StatsChartProps {
-  data: { name: string; value: number }[];
-  chartType: "bar" | "pie" | "line";
-}
+export default function StatisticsPage() {
+  const [chartType, setChartType] = useState<"bar" | "line" | "pie">("bar");
 
-const COLORS = ["#4F46E5", "#F59E0B", "#10B981", "#EF4444"];
+  const jobs = {
+    applied: 15,
+    interview: 8,
+    declined: 3,
+    offers: 2,
+  };
 
-export default function StatsChart({ data, chartType }: StatsChartProps) {
   return (
-    <div className="w-full h-96 bg-white rounded-2xl shadow-md p-4">
-      {chartType === "bar" && (
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="value" fill="#4F46E5" />
-          </BarChart>
-        </ResponsiveContainer>
-      )}
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Job Statistics</h1>
 
-      {chartType === "pie" && (
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={120}
-              fill="#4F46E5"
-              label
-            >
-              {data.map((_, i) => (
-                <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      )}
+        <select
+          value={chartType}
+          onChange={(e) =>
+            setChartType(e.target.value as "bar" | "line" | "pie")
+          }
+          className="border border-gray-300 rounded-md p-2"
+        >
+          <option value="bar">Bar Chart</option>
+          <option value="line">Line Chart</option>
+          <option value="pie">Pie Chart</option>
+        </select>
+      </div>
 
-      {chartType === "line" && (
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="value" stroke="#4F46E5" />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
+      {/*  Make sure to include chartType here */}
+      <StatsChart jobs={jobs} chartType={chartType} />
     </div>
   );
 }
