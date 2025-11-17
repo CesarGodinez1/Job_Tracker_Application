@@ -45,19 +45,23 @@ export async function getGmailForUser(userId: string) {
   });
 
   // When Google refreshes tokens, save them back to Prisma.
-  oauth2.on("tokens", async (tokens) => {
-    await db.account.update({
-      where: { id: account.id },
-      data: {
-        access_token: tokens.access_token ?? account.access_token,
-        refresh_token: tokens.refresh_token ?? account.refresh_token,
-        expires_at: tokens.expiry_date
-          ? Math.floor(tokens.expiry_date / 1000)
-          : account.expires_at,
-        token_type: tokens.token_type ?? account.token_type,
-        scope: tokens.scope ?? account.scope,
-      },
-    });
+  oauth2.on("tokens", (tokens) => {
+    db.account
+      .update({
+        where: { id: account.id },
+        data: {
+          access_token: tokens.access_token ?? account.access_token,
+          refresh_token: tokens.refresh_token ?? account.refresh_token,
+          expires_at: tokens.expiry_date
+            ? Math.floor(tokens.expiry_date / 1000)
+            : account.expires_at,
+          token_type: tokens.token_type ?? account.token_type,
+          scope: tokens.scope ?? account.scope,
+        },
+      })
+      .catch((err) => {
+        console.error("Failed to persist refreshed Gmail tokens", err);
+      });
   });
 
   const gmail = google.gmail({ version: "v1", auth: oauth2 });

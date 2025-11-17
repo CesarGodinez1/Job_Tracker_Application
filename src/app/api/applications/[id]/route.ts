@@ -26,32 +26,36 @@ async function requireUserId() {
 // ---- DELETE /api/applications/:id ----
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   const auth = await requireUserId();
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const app = await db.application.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { userId: true },
   });
   if (!app) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (app.userId !== auth.userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await db.application.delete({ where: { id: params.id } });
+  await db.application.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
 
 // ---- PATCH /api/applications/:id (update status) ----
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   const auth = await requireUserId();
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const app = await db.application.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: { userId: true },
   });
   if (!app) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -64,7 +68,7 @@ export async function PATCH(
   }
 
   await db.application.update({
-    where: { id: params.id },
+    where: { id },
     data: { status: parsed.data.status },
   });
 

@@ -18,7 +18,7 @@ export default function AutoSyncFromUrl() {
     if (auto !== "1") return;
     fired.current = true;
 
-    (async () => {
+    void (async () => {
       try {
         await fetch("/api/gmail/ingest?force=1", { method: "POST" });
         // Remove the query param to avoid re-trigger on refresh
@@ -32,4 +32,3 @@ export default function AutoSyncFromUrl() {
 
   return null;
 }
-

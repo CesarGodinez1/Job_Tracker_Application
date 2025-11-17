@@ -65,7 +65,7 @@ export function guessCompany(fromHeader: string | undefined): string | undefined
 
 /** Extract plain text. If no text/plain is present, use text/html and strip tags. */
 function extractText(msg: gmail_v1.Schema$Message): string {
-  const decode = (b64?: string) =>
+  const decode = (b64?: string | null) =>
     !b64 ? "" : Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
 
   const walk = (p?: gmail_v1.Schema$MessagePart): { text: string; html: string } => {

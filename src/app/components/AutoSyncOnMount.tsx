@@ -17,7 +17,7 @@ export default function AutoSyncOnMount({ minutes = 30 }: { minutes?: number }) 
     const intervalMs = Math.max(5, minutes) * 60 * 1000; // minimum 5 minutes
     if (now - last < intervalMs) return;
 
-    (async () => {
+    void (async () => {
       try {
         const res = await fetch("/api/gmail/ingest", { method: "POST" });
         const data = await res.json().catch(() => ({}));
@@ -33,4 +33,3 @@ export default function AutoSyncOnMount({ minutes = 30 }: { minutes?: number }) 
 
   return null;
 }
-
