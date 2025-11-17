@@ -6,6 +6,10 @@ import AddAppForm from "./AddAppForm";
 import ApplicationsTable from "./ApplicationsTable";
 import StatsBar from "./StatsBar";
 import SyncGmailButton from "@/components/SyncGmailButton";
+import ReconnectGoogleButton from "@/app/components/ReconnectGoogleButton";
+import SignOutButton from "@/app/components/SignOutButton";
+import AutoSyncOnMount from "@/app/components/AutoSyncOnMount";
+import AutoSyncFromUrl from "@/app/components/AutoSyncFromUrl";
 
 export default async function ApplicationsPage() {
   const session = await getServerSession(authOptions);
@@ -47,11 +51,21 @@ export default async function ApplicationsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header with Sync Gmail button */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">Applications</h1>
-        <SyncGmailButton />
+    <div className="relative min-h-screen bg-gradient-to-b from-white via-white to-gray-50">
+      <div className="mx-auto max-w-6xl p-6 space-y-6">
+      <AutoSyncOnMount minutes={30} />
+      <AutoSyncFromUrl />
+      {/* Header with actions */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Application Tracker</h1>
+          <p className="text-sm text-gray-600">Manage and monitor your job applications</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <SyncGmailButton />
+          <ReconnectGoogleButton />
+          <SignOutButton />
+        </div>
       </div>
 
       <AddAppForm />
@@ -60,10 +74,13 @@ export default async function ApplicationsPage() {
       <StatsBar counts={counts} />
 
       {apps.length === 0 ? (
-        <p className="text-sm opacity-80">No applications yet.</p>
+        <div className="rounded-2xl border border-black/5 bg-white/80 p-8 text-center text-sm text-gray-600 shadow-sm">
+          No applications yet. Add your first one above.
+        </div>
       ) : (
         <ApplicationsTable apps={apps} />
       )}
+      </div>
     </div>
   );
 }

@@ -13,11 +13,16 @@ export default function SyncGmailButton() {
     const data = await res.json().catch(() => null);
     setLoading(false);
     if (res.ok) {
-      setMsg(`Synced: +${data.created} created, ${data.updated} updated, ${data.skipped} skipped.`);
+      const created = Number(data?.created ?? 0);
+      const updated = Number(data?.updated ?? 0);
+      const scanned = Number(data?.scanned ?? 0);
+      const skipped = Math.max(0, scanned - created - updated);
+      setMsg(`Synced: +${created} created, ${updated} updated, ${skipped} skipped.`);
       // quick refresh
       window.location.reload();
     } else {
-      setMsg(data?.error ?? "Sync failed");
+      const reason = data?.reason ? ` — ${data.reason}` : "";
+      setMsg(`${data?.error ?? "Sync failed"}${reason}`);
     }
   }
 

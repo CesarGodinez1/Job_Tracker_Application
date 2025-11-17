@@ -37,24 +37,24 @@ export default function AddAppForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-2 rounded-xl border bg-[#0f1b2d] text-white p-4">
+    <form onSubmit={onSubmit} className="space-y-3 rounded-xl border border-gray-200 bg-white text-gray-900 p-4 shadow-sm">
       <h2 className="text-lg font-semibold">Add Application</h2>
       <input
-        className="w-full rounded-lg border px-3 py-2 bg-transparent text-white placeholder:text-gray-200"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         placeholder="Company (e.g., Google)"
         value={company}
         onChange={(e) => setCompany(e.target.value)}
         required
       />
       <input
-        className="w-full rounded-lg border px-3 py-2 bg-transparent text-white placeholder:text-gray-200"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         placeholder="Position (e.g., SWE Intern)"
         value={position}
         onChange={(e) => setPosition(e.target.value)}
         required
       />
       <select
-        className="w-full rounded-lg border px-3 py-2 bg-transparent text-white"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         value={status}
         onChange={(e) => setStatus(e.target.value as typeof STATUSES[number])}
       >
@@ -63,13 +63,13 @@ export default function AddAppForm() {
         ))}
       </select>
       <button
-        className="w-full rounded-lg border px-3 py-2 disabled:opacity-50"
+        className="w-full rounded-lg bg-blue-600 text-white px-3 py-2 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
         type="submit"
         disabled={isPending}
       >
         {isPending ? "Adding..." : "Add"}
       </button>
-      {msg && <p className="text-sm text-gray-300">{msg}</p>}
+      {msg && <p className="text-sm text-gray-700">{msg}</p>}
     </form>
   );
 }

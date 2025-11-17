@@ -6,19 +6,31 @@ const norm = (s: string | undefined | null) =>
 
 /** Strip HTML tags & decode a few common entities for rough text parsing */
 function htmlToText(html: string): string {
-  const withoutTags = html
+  let s = html
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ");
+  // Convert common block breaks to newlines so we can grab lines reliably
+  s = s
+    .replace(/<br\s*\/?>(?=\s*\n?)/gi, "\n")
+    .replace(/<\/(p|div|li|tr|table|h[1-6])>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
     .replace(/<[^>]+>/g, " ");
-  return withoutTags
+
+  s = s
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/&gt;/gi, ">");
+
+  // Normalize whitespace but keep newlines
+  s = s.replace(/[\t\r]+/g, " ");
+  s = s.replace(/\u00A0/g, " ");
+  s = s.replace(/\s*\n\s*/g, "\n");
+  s = s.replace(/\n{3,}/g, "\n\n");
+  s = s.replace(/[ \f\v]{2,}/g, " ");
+  return s.trim();
 }
 
 export function guessCompany(fromHeader: string | undefined): string | undefined {
@@ -33,15 +45,20 @@ export function guessCompany(fromHeader: string | undefined): string | undefined
     if (name) return name;
   }
 
-  const domainMatch = fromHeader.match(/@([a-z0-9.-]+\.[a-z]{2,})/i);
-  if (domainMatch) {
-    const domain = domainMatch[1].toLowerCase();
+  const emailMatch = fromHeader.match(/<([^>]+)>|([^\s]+@[^\s>]+)/);
+  const email = (emailMatch?.[1] || emailMatch?.[2] || "").toLowerCase();
+  const [localPart, domain = ""] = email.split("@");
+  if (domain) {
     if (domain.includes("lockheed") || domain.includes("brassring")) return "Lockheed Martin";
     if (domain.includes("google")) return "Google";
     if (domain.includes("amazon")) return "Amazon";
     if (domain.includes("microsoft")) return "Microsoft";
     if (domain.includes("meta")) return "Meta";
-    return domain.split(".")[0].replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    if (domain.includes("myworkday.com") && localPart && !/^(no[-_]?reply|donotreply|noreply|notifications?)$/.test(localPart)) {
+      return titleCase(localPart);
+    }
+    const prim = domain.split(".")[0].replace(/-/g, " ");
+    return prim.replace(/\b\w/g, c => c.toUpperCase());
   }
   return undefined;
 }
@@ -92,28 +109,35 @@ export function parseJobEmail(
   const subject = norm(subjectRaw);
   const from = getHeader("From");
   const snippet = norm(msg.snippet || "");
-  const bodyText = norm(extractText(msg));
+  const bodyRaw = extractText(msg);
+  const bodyText = norm(bodyRaw);
   const hay = `${subject} ${snippet} ${bodyText}`;
+  const hayLower = `${subjectRaw} ${msg.snippet ?? ""} ${bodyRaw}`.toLowerCase();
 
   // ====== Status heuristics (expanded) ======
   const isApplied =
-    /\b(thank you (for|in) (your )?(interest|applying)|application (has been )?(received|submitted)|resume has been submitted|candidate reference (number)?)\b/i.test(hay);
+    /\b(thank you (for|in) (your )?(interest|applying)|thanks? for applying|application (has been )?(received|submitted)|application is in|we (?:have )?received your application|submission (?:has been )?received|your application (?:has been )?received|resume has been submitted|candidate reference (number)?)\b/i.test(hay);
 
   const isOA =
     /\b(online (coding )?assessment|assessment invitation|hacker?rank|codility|code(signal|signal)|karat)\b/i.test(hay);
 
-  const isInterview =
-    /\b(interview|phone screen|recruiter screen|onsite|on-site|schedule (an|your)? interview)\b/i.test(hay);
+  // "Interview" is often mentioned in application receipts (e.g., "if selected for an interview...").
+  // Use a stronger heuristic that requires scheduling/confirming context.
+  const isInterviewStrong =
+    /\b((schedule|scheduled|scheduling|book|confirm|confirmed|availability|timeslot|calendar).{0,40}interview|interview.{0,40}(schedule|scheduled|scheduling|book|confirm|confirmed|availability|timeslot|calendar)|phone screen|recruiter screen|onsite|on-site)\b/i.test(hay);
+  const isConditionalInterview = /\bif selected for an interview\b/i.test(bodyRaw);
 
   const isOffer =
     /\b(offer letter|extend(ed)? an offer|we are pleased to offer)\b/i.test(hay);
 
-  const isRejected =
-    /\b(no longer being considered|unfortunately|we (regret|are unable) to move forward|after careful consideration)\b/i.test(hay);
+  const isRejectedStrong = /\b(we\s+regret\s+to\s+inform\s+you|will\s+not\s+be\s+moving\s+forward|not\s+moving\s+forward|are\s+unable\s+to\s+move\s+forward|application\s+(?:has\s+been\s+)?(unsuccessful|rejected)|no\s+longer\s+under\s+consideration)\b/i.test(hayLower);
+  const mentionsNoLongerConsidered = /\bno\s+longer\s+(?:being\s+)?considered\b/i.test(hayLower);
+  const isFutureNotice = /(will\s+(?:receive|be\s+notified|be\s+sent).{0,80}no\s+longer\s+(?:being\s+)?considered|when\s+you\s+are\s+no\s+longer\s+(?:being\s+)?considered)/i.test(hayLower);
+  const isRejected = isRejectedStrong || (mentionsNoLongerConsidered && !isFutureNotice);
 
   let status: ApplicationStatus | undefined;
   if (isOffer) status = "OFFER";
-  else if (isInterview) status = "INTERVIEW";
+  else if (isInterviewStrong && !isConditionalInterview) status = "INTERVIEW";
   else if (isOA) status = "OA";
   else if (isRejected) status = "REJECTED";
   else if (isApplied) status = "APPLIED";
@@ -123,6 +147,12 @@ export function parseJobEmail(
   // ====== Company + Position guesses ======
   let company = guessCompany(from);
 
+  // Try to pull company from subjects like "Your Disney Careers Application Is In!"
+  if (!company) {
+    const mCompany = subjectRaw.match(/your\s+(.+?)\s+careers?\s+application\s+is\s+in/i);
+    if (mCompany?.[1]) company = titleCase(mCompany[1]);
+  }
+
   // “Subject — …” or “… at Company”
   const dash = subjectRaw.match(/^(.*?)\s[-–—]\s(.*)$/);
   if (dash && !company) company = titleCase(dash[1]);
@@ -130,11 +160,31 @@ export function parseJobEmail(
   const atPat = subjectRaw.match(/^(.*?)\s(?:at|@)\s(.*)$/i);
   if (atPat && !company) company = titleCase(atPat[2]);
 
-  // Loose position term from subject
+  // Position: try body context like "submitted for the following position(s): <line>"
   let position: string | undefined;
-  const posMatch =
-    subject.match(/\b(intern|internship|software engineer|swe|frontend|back\s?end|full[- ]stack|data|ml|security|devops)\b/i);
-  if (posMatch) position = titleCase(posMatch[0]);
+  // Use a regex to capture the first line after "position(s):"
+  const m = bodyRaw.match(/position\(s\):\s*([^\n\r]+)/i);
+  if (m?.[1]) {
+    let p = m[1]
+      .replace(/\b[A-Z0-9]{5,}\b/g, "") // drop req IDs like 700722BR
+      .replace(/[:.,;]+\s*$/, "")
+      .trim();
+    position = titleCase(p);
+  }
+  if (!position) {
+    const posMatch = subject.match(/\b(intern|internship|software engineer|swe|frontend|back\s?end|full[- ]stack|data|ml|security|devops)\b/i);
+    if (posMatch) position = titleCase(posMatch[0]);
+  }
+  if (!position) {
+    const m2 = bodyRaw.match(/\b(?:interest (?:you(?:'|’)ve|you have) shown in the|for the|regarding the)\s+(.+?)\s+position\b/i);
+    if (m2?.[1]) {
+      let p = m2[1]
+        .replace(/[,\-]\s*(spring|summer|fall|winter)\s*\d{4}/i, "")
+        .replace(/\s*\(.*?\)$/, "")
+        .trim();
+      position = titleCase(p);
+    }
+  }
 
   return { status, company, position };
 }

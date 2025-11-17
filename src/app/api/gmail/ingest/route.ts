@@ -6,7 +6,6 @@ import type { ApplicationStatus } from "@prisma/client";
 import { google, gmail_v1 } from "googleapis";
 import { parseJobEmail } from "@/lib/emailParsers";
 
-// ---- status precedence so we can decide when to update an existing app ----
 const STATUS_ORDER: ApplicationStatus[] = [
   "SAVED",
   "APPLIED",
@@ -18,236 +17,214 @@ const STATUS_ORDER: ApplicationStatus[] = [
 ];
 const rank = (s: ApplicationStatus) => STATUS_ORDER.indexOf(s);
 
-// ---- get & refresh a Google access token for this user ----
+// ---- Google OAuth client using tokens from Prisma Account(row) ----
 async function getGoogleClientForUser(userId: string) {
   const account = await db.account.findFirst({
     where: { userId, provider: "google" },
   });
-  if (!account?.access_token) throw new Error("No Google account linked.");
+  if (!account) throw new Error("No linked Google account.");
+  if (!account.access_token && !account.refresh_token) {
+    throw new Error("Missing Google tokens.");
+  }
 
   const client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID!,
-    process.env.GOOGLE_CLIENT_SECRET!,
-    process.env.NEXTAUTH_URL! + "/api/auth/callback/google"
+    process.env.GOOGLE_CLIENT_SECRET!
+    // redirect URI not required for refresh/use here
   );
 
-  // refresh if expired (or about to be)
-  const now = Math.floor(Date.now() / 1000);
-  if (account.expires_at && account.expires_at < now + 60 && account.refresh_token) {
-    const url = "https://oauth2.googleapis.com/token";
-    const body = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      grant_type: "refresh_token",
-      refresh_token: account.refresh_token,
-    });
-    const res = await fetch(url, { method: "POST", body });
-    if (!res.ok) {
-      throw new Error(`Failed to refresh Google token (${res.status})`);
-    }
-    const json = await res.json();
-    await db.account.update({
-      where: { id: account.id },
-      data: {
-        access_token: json.access_token ?? account.access_token,
-        expires_at: json.expires_in ? now + Number(json.expires_in) : account.expires_at,
-        id_token: json.id_token ?? account.id_token ?? undefined,
-        scope: json.scope ?? account.scope ?? undefined,
-      },
-    });
-    client.setCredentials({ access_token: json.access_token });
-  } else {
-    client.setCredentials({ access_token: account.access_token });
-  }
+  client.setCredentials({
+    access_token: account.access_token ?? undefined,
+    refresh_token: account.refresh_token ?? undefined,
+    expiry_date: account.expires_at ? account.expires_at * 1000 : undefined,
+  });
+
+  // Ensure access token is fresh
+  await client.getAccessToken().catch(() => {
+    throw new Error("Google token refresh failed; please re-connect Google.");
+  });
 
   return client;
 }
 
-// ---- turn a Gmail message into or onto an Application row ----
 async function applyEventToApplications(opts: {
   userId: string;
   parsed: { status: ApplicationStatus; company?: string; position?: string };
   subject: string;
-  gmailId: string;
+  force?: boolean;
+  receivedAt: Date;
 }) {
-  const { userId, parsed, subject } = opts;
+  const { userId, parsed, subject, force, receivedAt } = opts;
 
-  if (!parsed.company) return { created: 0, updated: 0 }; // no company guess -> skip
+  if (!parsed.company) return { created: 0, updated: 0 };
 
-  // upsert company (location left null – your schema has @@unique([name, location]))
-  const company = await db.company.upsert({
-    where: {
-      // since location can be null and @@unique is composite, findFirst then upsert by id
-      // we emulate upsert by name only:
-      // create a deterministic name+location by first trying findFirst
-      // (Postgres treats NULLs as distinct, so we can’t use composite unique with null in upsert)
-      // We'll do: try findFirst, else create.
-      // prisma doesn't allow upsert without a unique where, so we split in two steps:
-      // (1) findFirst
-      // (2) create if missing
-      // This block is replaced below – just a placeholder to satisfy TS
-      id: "unused",
-    },
-    update: {},
-    create: { name: parsed.company },
-  } as any);
+  // --- Company: find or create by name (schema unique is name+location) ---
+  let company = await db.company.findFirst({ where: { name: parsed.company } });
+  if (!company) {
+    company = await db.company.create({ data: { name: parsed.company } });
+  }
 
-  // The above "as any" workaround is ugly. Do it properly:
-  let companyRow =
-    (await db.company.findFirst({ where: { name: parsed.company } })) ??
-    (await db.company.create({ data: { name: parsed.company } }));
+  // --- Job: find or create by title+companyId (no unique in schema) ---
+  const title = parsed.position ?? "Unknown Role";
+  let job = await db.job.findFirst({ where: { title, companyId: company.id } });
+  if (!job) {
+    job = await db.job.create({ data: { title, companyId: company.id } });
+  }
 
-  // upsert job by (companyId, title)
-  const jobRow =
-    (await db.job.findFirst({
-      where: { companyId: companyRow.id, title: parsed.position ?? "Unknown Role" },
-    })) ??
-    (await db.job.create({
-      data: {
-        title: parsed.position ?? "Unknown Role",
-        companyId: companyRow.id,
-      },
-    }));
-
-  // find existing application for this user & job
-  const existing =
-    (await db.application.findFirst({
-      where: { userId, jobId: jobRow.id },
-      select: { id: true, status: true },
-    })) ?? null;
+  const existing = await db.application.findFirst({
+    where: { userId, jobId: job.id },
+    select: { id: true, status: true },
+  });
 
   if (!existing) {
-    // create new application
-    const app = await db.application.create({
+    await db.application.create({
       data: {
         userId,
-        jobId: jobRow.id,
+        jobId: job.id,
         status: parsed.status,
+        createdAt: receivedAt,
+        // --- If you have Activity model, keep this; else comment it out ---
         activities: {
-          create: [
-            {
-              kind: "EMAIL",
-              details: `Detected ${parsed.status} from Gmail: ${subject}`,
-            },
-          ],
-        },
+          create: [{ kind: "EMAIL", details: `Detected ${parsed.status} from Gmail: ${subject}` }],
+        } as any,
       },
     });
     return { created: 1, updated: 0 };
   }
 
-  // maybe update status based on precedence
-  if (parsed.status !== existing.status && rank(parsed.status) > rank(existing.status)) {
+  if (
+    parsed.status !== existing.status &&
+    (force || rank(parsed.status) > rank(existing.status))
+  ) {
+    const current = await db.application.findUnique({ where: { id: existing.id }, select: { createdAt: true } });
+    const backfill = current && receivedAt < current.createdAt ? receivedAt : undefined;
     await db.application.update({
       where: { id: existing.id },
       data: {
         status: parsed.status,
+        // If this email predates the current createdAt, backfill to earliest known
+        ...(backfill ? { createdAt: backfill } : {}),
         activities: {
-          create: [
-            {
-              kind: "EMAIL",
-              details: `Status updated to ${parsed.status} from Gmail: ${subject}`,
-            },
-          ],
-        },
+          create: [{ kind: "EMAIL", details: `Status updated to ${parsed.status} from Gmail: ${subject}` }],
+        } as any,
       },
     });
     return { created: 0, updated: 1 };
   } else {
-    // even if status unchanged (or lower precedence), record activity so the user sees the email hit
-    await db.activity.create({
-      data: {
-        applicationId: existing.id,
-        kind: "EMAIL",
-        details: `Email processed (no status change): ${subject}`,
-      },
-    });
+    // Optional activity log with no status change
+    try {
+      await db.activity.create({
+        data: { applicationId: existing.id, kind: "EMAIL", details: `Email processed: ${subject}` },
+      });
+      // Also backfill createdAt if email predates it
+      const cur = await db.application.findUnique({ where: { id: existing.id }, select: { createdAt: true } });
+      if (cur && receivedAt < cur.createdAt) {
+        await db.application.update({ where: { id: existing.id }, data: { createdAt: receivedAt } });
+      }
+    } catch {}
     return { created: 0, updated: 0 };
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const me = await db.user.findUnique({
+    const user = await db.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
     });
-    if (!me) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    // gmail client
-    const client = await getGoogleClientForUser(me.id);
+    const { searchParams } = new URL(req.url);
+    const force = searchParams.get("force") === "1";
+
+    const client = await getGoogleClientForUser(user.id);
     const gmail = google.gmail({ version: "v1", auth: client });
 
-    // fetch a small recent batch (tweak as you like)
+    // Broader query but still focused on recruiting traffic.
+    // Add common ATS sources and subject synonyms (Workday/BrassRing often use myworkday.com etc.)
+    let q =
+      'category:primary (subject:("thank you for applying" OR "application received" OR "application is in" OR "application submitted" OR "we received your application" OR assessment OR interview OR offer OR regret OR declined) OR from:(careers OR recruiting OR jobs OR donotreply OR noreply OR myworkday OR brassring))';
+    if (!force) q += " newer_than:30d";
+
     const list = await gmail.users.messages.list({
       userId: "me",
-      maxResults: 20,
-      // only inbox/primary, recent:
-      q: "newer_than:30d category:primary",
+      q,
+      maxResults: 25,
     });
 
     const ids = (list.data.messages ?? []).map((m) => m.id!).filter(Boolean);
+
     let scanned = 0;
     let created = 0;
     let updated = 0;
 
     for (const id of ids) {
-      const exists = await db.emailEvent.findUnique({ where: { gmailId: id } });
-      if (exists) continue; // already processed
+      // Skip if we've processed this gmailId and not forcing
+      if (!force) {
+        const seen = await db.emailEvent.findUnique({ where: { gmailId: id } });
+        if (seen) continue;
+      }
 
       const full = await gmail.users.messages.get({
         userId: "me",
         id,
         format: "full",
       });
-      scanned += 1;
+      scanned++;
 
       const headers = full.data.payload?.headers ?? [];
       const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value ?? "";
+      const snippet = full.data.snippet ?? "";
+      // Prefer internalDate (ms since epoch), fallback to Date header
+      const receivedAt = (() => {
+        const internal = full.data.internalDate ? Number(full.data.internalDate) : undefined;
+        if (internal && !Number.isNaN(internal)) return new Date(internal);
+        const dateHeader = headers.find((h) => h.name?.toLowerCase() === "date")?.value;
+        const d = dateHeader ? new Date(dateHeader) : new Date();
+        return d;
+      })();
 
-      // parse into a status/company/position
+      // Parse to status/company/position (your custom function)
       const parsed = parseJobEmail(full.data as gmail_v1.Schema$Message);
-      if (!parsed) {
-        // store event anyway for traceability
-        await db.emailEvent.create({
-          data: {
-            userId: me.id,
-            gmailId: id,
-            subject,
-            snippet: full.data.snippet ?? "",
-            processedAt: new Date(),
-          },
-        });
-        continue;
-      }
 
-      // record the email event (so we don’t reparse)
-      await db.emailEvent.create({
-        data: {
-          userId: me.id,
-          gmailId: id,
+      await db.emailEvent.upsert({
+        where: { gmailId: id },
+        update: {
           subject,
-          snippet: full.data.snippet ?? "",
-          detectedStatus: parsed.status,
-          detectedCompany: parsed.company,
-          detectedPosition: parsed.position,
+          snippet,
+          detectedStatus: parsed?.status,
+          detectedCompany: parsed?.company,
+          detectedPosition: parsed?.position,
+          processedAt: new Date(),
+          userId: user.id,
+        },
+        create: {
+          gmailId: id,
+          userId: user.id,
+          subject,
+          snippet,
+          detectedStatus: parsed?.status,
+          detectedCompany: parsed?.company,
+          detectedPosition: parsed?.position,
           processedAt: new Date(),
         },
       });
 
-      // apply to Applications
-      const res = await applyEventToApplications({
-        userId: me.id,
-        parsed,
-        subject,
-        gmailId: id,
-      });
-      created += res.created;
-      updated += res.updated;
+      if (parsed) {
+        const res = await applyEventToApplications({
+          userId: user.id,
+          parsed,
+          subject,
+          receivedAt,
+          force,
+        });
+        created += res.created;
+        updated += res.updated;
+      }
     }
 
     return NextResponse.json({ ok: true, scanned, created, updated });

@@ -1,15 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { db } from "@/lib/db";
-import bcrypt from "bcryptjs";
-import { z } from "zod";
-
-const Creds = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db),
@@ -25,35 +17,9 @@ export const authOptions: NextAuthOptions = {
           scope:
             "openid email profile https://www.googleapis.com/auth/gmail.readonly",
           access_type: "offline",
-          prompt: "consent", // ensures refresh_token is returned
+          // Force account chooser and consent so users can pick accounts
+          prompt: "consent select_account", // ensures refresh_token is returned
         },
-      },
-    }),
-
-    // Credentials (manual email/password)
-    CredentialsProvider({
-      name: "Email and Password",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const parsed = Creds.safeParse(credentials);
-        if (!parsed.success) return null;
-
-        const { email, password } = parsed.data;
-        const user = await db.user.findUnique({ where: { email } });
-        if (!user?.passwordHash) return null;
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
-
-        return {
-          id: user.id,
-          name: user.name ?? undefined,
-          email: user.email ?? undefined,
-          image: user.image ?? undefined,
-        };
       },
     }),
   ],
@@ -62,6 +28,48 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
 
   callbacks: {
+    // Explicitly link Google account to an existing user with same email
+    async signIn({ user, account, profile }) {
+      try {
+        if (account?.provider === "google") {
+          const email = (user?.email || (profile as any)?.email) as string | undefined;
+          if (!email) return true;
+
+          const existing = await db.user.findUnique({ where: { email } });
+          if (existing) {
+            const already = await db.account.findFirst({
+              where: {
+                userId: existing.id,
+                provider: "google",
+                providerAccountId: account.providerAccountId!,
+              },
+            });
+            if (!already) {
+              await db.account.create({
+                data: {
+                  userId: existing.id,
+                  type: account.type!,
+                  provider: "google",
+                  providerAccountId: account.providerAccountId!,
+                  access_token: account.access_token ?? null,
+                  refresh_token: account.refresh_token ?? null,
+                  expires_at: account.expires_at ?? null,
+                  token_type: account.token_type ?? null,
+                  scope: account.scope ?? null,
+                  id_token: account.id_token ?? null,
+                  session_state: (account as any).session_state ?? null,
+                },
+              });
+            }
+            // let the sign in continue using the linked account
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error("signIn linking error", e);
+      }
+      return true;
+    },
     async session({ session, token }) {
       if (session.user && token.sub) {
         // add id to session for easy access
