@@ -71,7 +71,7 @@ function SignInContent() {
 
 export default function SignIn() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading sign-in…</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">Loading sign-in...</div>}>
       <SignInContent />
     </Suspense>
   );
