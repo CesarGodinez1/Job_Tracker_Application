@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import AddAppForm from "./AddAppForm";
 import ApplicationsTable from "./ApplicationsTable";
 import StatsBar from "./StatsBar";
+import StatusBarGraph from "./StatusBarGraph";
 import SyncGmailButton from "@/components/SyncGmailButton";
 import ReconnectGoogleButton from "@/app/components/ReconnectGoogleButton";
 import SignOutButton from "@/app/components/SignOutButton";
@@ -80,6 +81,8 @@ export default async function ApplicationsPage() {
       ) : (
         <ApplicationsTable apps={apps} />
       )}
+      {/* NEW: Bar graph of job statuses */}
+      <StatusBarGraph counts={counts} />
       </div>
     </div>
   );
