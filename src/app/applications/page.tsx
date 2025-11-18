@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import AddAppForm from "./AddAppForm";
 import ApplicationsTable from "./ApplicationsTable";
 import StatsBar from "./StatsBar";
-import StatusBarGraph from "./StatusBarGraph";
 import SyncGmailButton from "@/components/SyncGmailButton";
 import ReconnectGoogleButton from "@/app/components/ReconnectGoogleButton";
 import SignOutButton from "@/app/components/SignOutButton";
@@ -73,6 +72,14 @@ export default async function ApplicationsPage() {
 
       {/* Stats summary bar */}
       <StatsBar counts={counts} />
+      <div className="flex justify-end">
+        <a
+          href="/applications/stats"
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+        >
+          View Full Stats
+        </a>
+      </div>
 
       {apps.length === 0 ? (
         <div className="rounded-2xl border border-black/5 bg-white/80 p-8 text-center text-sm text-gray-600 shadow-sm">
@@ -81,8 +88,6 @@ export default async function ApplicationsPage() {
       ) : (
         <ApplicationsTable apps={apps} />
       )}
-      {/* NEW: Bar graph of job statuses */}
-      <StatusBarGraph counts={counts} />
       </div>
     </div>
   );

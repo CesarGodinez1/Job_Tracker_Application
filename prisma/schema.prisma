@@ -7,6 +7,148 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String?       @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime      @default(now())
+  passwordHash  String?
+  accounts      Account[]
+  applications  Application[]
+  contacts      Contact[]
+  emailEvents   EmailEvent[]
+  sessions      Session[]
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Company {
+  id        String    @id @default(cuid())
+  name      String
+  website   String?
+  location  String?
+  createdAt DateTime  @default(now())
+  contacts  Contact[]
+  jobs      Job[]
+
+  @@unique([name, location])
+}
+
+model Job {
+  id           String        @id @default(cuid())
+  title        String
+  level        String?
+  location     String?
+  salaryMin    Int?
+  salaryMax    Int?
+  url          String?
+  companyId    String
+  createdAt    DateTime      @default(now())
+  applications Application[]
+  company      Company       @relation(fields: [companyId], references: [id])
+}
+
+model Application {
+  id         String            @id @default(cuid())
+  userId     String
+  jobId      String
+  status     ApplicationStatus @default(SAVED)
+  source     String?
+  resumeUrl  String?
+  coverUrl   String?
+  nextAction String?
+  dueAt      DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  activities Activity[]
+  job        Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes      Note[]
+
+  @@index([userId, status])
+}
+
+model Note {
+  id            String      @id @default(cuid())
+  applicationId String
+  body          String
+  createdAt     DateTime    @default(now())
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+  id            String         @id @default(cuid())
+  applicationId String
+  kind          String
+  interviewType InterviewType?
+  at            DateTime       @default(now())
+  details       String?
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  companyId String?
+  name      String
+  role      String?
+  email     String?
+  phone     String?
+  notes     String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailEvent {
+  id               String             @id @default(cuid())
+  userId           String
+  gmailId          String             @unique
+  subject          String?
+  snippet          String?
+  detectedStatus   ApplicationStatus?
+  detectedCompany  String?
+  detectedPosition String?
+  processedAt      DateTime           @default(now())
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 enum ApplicationStatus {
   SAVED
   APPLIED
@@ -23,153 +165,4 @@ enum InterviewType {
   BEHAVIORAL
   ONSITE
   OTHER
-}
-
-model User {
-  id            String    @id @default(cuid())
-  passwordHash  String?   @db.Text
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-
-  accounts Account[]
-  sessions Session[]
-
-  applications Application[]
-  contacts     Contact[]
-  emailEvents  EmailEvent[]
-
-  createdAt DateTime @default(now())
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  refresh_token_expires_in Int?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
-
-model Company {
-  id        String    @id @default(cuid())
-  name      String
-  website   String?
-  location  String?
-  jobs      Job[]
-  contacts  Contact[]
-  createdAt DateTime  @default(now())
-
-  @@unique([name, location])
-}
-
-model Job {
-  id           String        @id @default(cuid())
-  title        String
-  level        String?
-  location     String?
-  salaryMin    Int?
-  salaryMax    Int?
-  url          String?
-  company      Company       @relation(fields: [companyId], references: [id])
-  companyId    String
-  applications Application[]
-  createdAt    DateTime      @default(now())
-}
-
-model Application {
-  id         String            @id @default(cuid())
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
-  job        Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  jobId      String
-  status     ApplicationStatus @default(SAVED)
-  source     String?
-  resumeUrl  String?
-  coverUrl   String?
-  notes      Note[]
-  activities Activity[]
-  nextAction String?
-  dueAt      DateTime?
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-
-  @@index([userId, status])
-}
-
-model Note {
-  id            String      @id @default(cuid())
-  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  applicationId String
-  body          String
-  createdAt     DateTime    @default(now())
-}
-
-model Activity {
-  id            String         @id @default(cuid())
-  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  applicationId String
-  kind          String
-  interviewType InterviewType?
-  at            DateTime       @default(now())
-  details       String?
-}
-
-model Contact {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  company   Company? @relation(fields: [companyId], references: [id])
-  companyId String?
-  name      String
-  role      String?
-  email     String?
-  phone     String?
-  notes     String?
-}
-
-model EmailEvent {
-  id               String             @id @default(cuid())
-  userId           String
-  gmailId          String             @unique
-  subject          String?
-  snippet          String?
-  detectedStatus   ApplicationStatus?
-  detectedCompany  String?
-  detectedPosition String?
-  processedAt      DateTime           @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
