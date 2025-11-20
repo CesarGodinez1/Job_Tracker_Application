@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
+  LineChart, Line,
 } from "recharts";
 
 type Counts = Record<
@@ -22,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function StatsChartsClient({ counts }: { counts: Counts }) {
-  const [chart, setChart] = useState<"bar" | "pie">("bar");
+  const [chart, setChart] = useState<"bar" | "pie" |"line">("bar");
 
   const data = Object.entries(counts).map(([key, value]) => ({
     name: key,
@@ -43,6 +44,7 @@ export default function StatsChartsClient({ counts }: { counts: Counts }) {
         >
           <option value="bar">Bar Chart</option>
           <option value="pie">Pie Chart</option>
+           <option value="line">line Chart</option>
         </select>
       </div>
 
@@ -81,6 +83,19 @@ export default function StatsChartsClient({ counts }: { counts: Counts }) {
               </Pie>
               <Tooltip />
             </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {chart === "line" && (
+        <div className="w-full min-h-[400px] h-96 rounded-xl border bg-white p-4 shadow">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data}>
+              <XAxis dataKey="name" stroke="#555" />
+              <YAxis stroke="#555" />
+              <Tooltip />
+              <Line type="monotone" dataKey="value" stroke="#00bbffff" strokeWidth={3} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       )}
